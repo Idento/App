@@ -1383,6 +1383,7 @@ const translations: TranslationDeepObject<typeof en> = {
         totalAmountLessThanOriginal: (amount: string) => `O valor total é ${amount} menor que a despesa original.`,
         splitExpenseZeroAmount: 'Insira um valor válido antes de continuar.',
         splitExpenseOneMoreSplit: 'Nenhuma divisão adicionada. Adicione pelo menos uma para salvar.',
+        splitExpenseCannotEditSplits: 'Uma destas divisões está em um relatório que você não pode editar, então estas divisões não podem ser alteradas.',
         splitExpenseEditTitle: (amount: string, merchant: string) => `Editar ${amount} para ${merchant}`,
         removeSplit: 'Remover divisão',
         splitExpenseCannotBeEditedModalTitle: 'Esta despesa não pode ser editada',

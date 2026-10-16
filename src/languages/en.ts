@@ -1518,6 +1518,7 @@ const translations = {
         totalAmountLessThanOriginal: (amount: string) => `Total amount is ${amount} less than the original expense.`,
         splitExpenseZeroAmount: 'Please enter a valid amount before continuing.',
         splitExpenseOneMoreSplit: 'No splits added. Add at least one to save.',
+        splitExpenseCannotEditSplits: "One of these splits is on a report you can't edit, so these splits can't be changed.",
         splitExpenseEditTitle: (amount: string, merchant: string) => `Edit ${amount} for ${merchant}`,
         removeSplit: 'Remove split',
         splitExpenseCannotBeEditedModalTitle: "This expense can't be edited",

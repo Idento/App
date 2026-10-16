@@ -1,4 +1,4 @@
-import {render} from '@testing-library/react-native';
+import {fireEvent, render, screen} from '@testing-library/react-native';
 
 import ComposeProviders from '@components/ComposeProviders';
 import {LocaleContextProvider} from '@components/LocaleContextProvider';
@@ -9,11 +9,12 @@ import type {PlatformStackScreenProps} from '@libs/Navigation/PlatformStackNavig
 import type {MoneyRequestNavigatorParamList} from '@libs/Navigation/types';
 
 import DynamicSplitExpensePage from '@pages/iou/DynamicSplitExpensePage';
+import updateSplitTransactionsFromSplitExpensesFlow from '@pages/iou/updateSplitTransactionsFromSplitExpensesFlow';
 
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 import SCREENS from '@src/SCREENS';
-import type {Report, Transaction} from '@src/types/onyx';
+import type {Policy, Report, Transaction} from '@src/types/onyx';
 import type {SearchResultDataType} from '@src/types/onyx/SearchResults';
 
 import React from 'react';
@@ -98,6 +99,8 @@ jest.mock('@libs/Navigation/OnyxTabNavigator', () => {
     };
 });
 
+jest.mock('@pages/iou/updateSplitTransactionsFromSplitExpensesFlow', () => jest.fn());
+
 jest.mock('@pages/iou/SplitList', () => {
     function MockSplitList({data}: {data: SplitListItemType[]}) {
         capturedSplitListData = data;
@@ -120,12 +123,12 @@ function makeTransaction(transactionID: string, reportID: string, amount: number
     };
 }
 
-function renderPage() {
+function renderPage(splitReportID = SELF_DM_REPORT_ID) {
     const route = createMock<DynamicSplitExpensePageProps['route']>({
         key: 'DynamicSplitExpenseSearch',
         name: SCREENS.MONEY_REQUEST.DYNAMIC_SPLIT_EXPENSE_SEARCH,
         params: {
-            splitReportID: SELF_DM_REPORT_ID,
+            splitReportID,
             originalTransactionID: ORIGINAL_TRANSACTION_ID,
             splitExpenseTransactionID: OPEN_SPLIT_TRANSACTION_ID,
         },
@@ -229,5 +232,93 @@ describe('DynamicSplitExpensePage', () => {
         // Then both rows stay editable - only frozen splits are locked
         expect(capturedSplitListData).toHaveLength(2);
         expect(capturedSplitListData.every((item) => item.isEditable)).toBe(true);
+    });
+
+    describe('saving splits', () => {
+        const POLICY_ID = 'splitPolicy';
+        const MANAGED_REPORT_ID = 'managedReport';
+        const REJECTED_TO_REPORT_ID = 'rejectedToReport';
+        const SUBMITTER_ACCOUNT_ID = 3;
+        const APPROVER_ACCOUNT_ID = 2;
+        const APPROVER_LOGIN = 'approver@example.com';
+
+        function makeExpenseReport(reportID: string, managerID: number, isOpen: boolean): Report {
+            return {
+                reportID,
+                type: CONST.REPORT.TYPE.EXPENSE,
+                policyID: POLICY_ID,
+                ownerAccountID: SUBMITTER_ACCOUNT_ID,
+                managerID,
+                stateNum: isOpen ? CONST.REPORT.STATE_NUM.OPEN : CONST.REPORT.STATE_NUM.SUBMITTED,
+                statusNum: isOpen ? CONST.REPORT.STATUS_NUM.OPEN : CONST.REPORT.STATUS_NUM.SUBMITTED,
+            };
+        }
+
+        function makeChild(transactionID: string, reportID: string, amount: number): Transaction {
+            return {
+                ...makeTransaction(transactionID, reportID, amount),
+                comment: {originalTransactionID: ORIGINAL_TRANSACTION_ID, source: CONST.IOU.TYPE.SPLIT},
+            };
+        }
+
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        async function setUpSplitGroup(rejectedToReportManagerID: number) {
+            const policy: Policy = {
+                id: POLICY_ID,
+                name: 'Workspace',
+                type: CONST.POLICY.TYPE.TEAM,
+                role: CONST.POLICY.ROLE.USER,
+                owner: 'owner@example.com',
+                outputCurrency: CONST.CURRENCY.USD,
+                approvalMode: CONST.POLICY.APPROVAL_MODE.BASIC,
+                approver: APPROVER_LOGIN,
+                employeeList: {[CURRENT_USER_LOGIN]: {email: CURRENT_USER_LOGIN, role: CONST.POLICY.ROLE.USER}},
+            };
+            await Promise.all([
+                Onyx.set(`${ONYXKEYS.COLLECTION.POLICY}${POLICY_ID}`, policy),
+                Onyx.set(ONYXKEYS.PERSONAL_DETAILS_LIST, {
+                    [SUBMITTER_ACCOUNT_ID]: {accountID: SUBMITTER_ACCOUNT_ID, login: 'submitter@example.com'},
+                    [APPROVER_ACCOUNT_ID]: {accountID: APPROVER_ACCOUNT_ID, login: APPROVER_LOGIN},
+                }),
+                Onyx.set(`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`, makeExpenseReport(MANAGED_REPORT_ID, CURRENT_USER_ACCOUNT_ID, false)),
+                Onyx.set(`${ONYXKEYS.COLLECTION.REPORT}${REJECTED_TO_REPORT_ID}`, makeExpenseReport(REJECTED_TO_REPORT_ID, rejectedToReportManagerID, true)),
+                Onyx.set(`${ONYXKEYS.COLLECTION.TRANSACTION}${ORIGINAL_TRANSACTION_ID}`, makeTransaction(ORIGINAL_TRANSACTION_ID, MANAGED_REPORT_ID, -300)),
+                Onyx.set(`${ONYXKEYS.COLLECTION.TRANSACTION}${OPEN_SPLIT_TRANSACTION_ID}`, makeChild(OPEN_SPLIT_TRANSACTION_ID, MANAGED_REPORT_ID, -150)),
+                Onyx.set(`${ONYXKEYS.COLLECTION.TRANSACTION}${FROZEN_SPLIT_TRANSACTION_ID}`, makeChild(FROZEN_SPLIT_TRANSACTION_ID, REJECTED_TO_REPORT_ID, -150)),
+            ]);
+            await waitForBatchedUpdatesWithAct();
+        }
+
+        it('shows an error and sends nothing when a split sits on an open report the user cannot edit', async () => {
+            // Given a vacation delegate who manages the submitted report, while the rejected split moved to the submitter's open report that the approver manages
+            await setUpSplitGroup(APPROVER_ACCOUNT_ID);
+
+            // When the delegate saves changed splits
+            renderPage(MANAGED_REPORT_ID);
+            await waitForBatchedUpdatesWithAct();
+            fireEvent.press(screen.getByText('Save'));
+            await waitForBatchedUpdatesWithAct();
+
+            // Then no write is started, because the backend refuses any write to this split group, and the user is told why
+            expect(updateSplitTransactionsFromSplitExpensesFlow).not.toHaveBeenCalled();
+            expect(screen.getByText("One of these splits is on a report you can't edit, so these splits can't be changed.")).toBeTruthy();
+        });
+
+        it('saves as before when the user can edit every split', async () => {
+            // Given the regular approver, who also manages the open report of the rejected split
+            await setUpSplitGroup(CURRENT_USER_ACCOUNT_ID);
+
+            // When the approver saves changed splits
+            renderPage(MANAGED_REPORT_ID);
+            await waitForBatchedUpdatesWithAct();
+            fireEvent.press(screen.getByText('Save'));
+            await waitForBatchedUpdatesWithAct();
+
+            // Then the save goes through as today
+            expect(updateSplitTransactionsFromSplitExpensesFlow).toHaveBeenCalledTimes(1);
+        });
     });
 });

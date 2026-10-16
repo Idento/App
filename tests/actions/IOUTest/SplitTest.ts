@@ -41,7 +41,7 @@ import {
     updateSplitExpenseField,
 } from '@userActions/IOU/SplitExpenseItems';
 import type {UpdateSplitTransactionsParams} from '@userActions/IOU/SplitTransactionUpdate';
-import {updateSplitTransactions} from '@userActions/IOU/SplitTransactionUpdate';
+import {canEditAllSplits, updateSplitTransactions} from '@userActions/IOU/SplitTransactionUpdate';
 
 import CONST from '@src/CONST';
 import IntlStore from '@src/languages/IntlStore';
@@ -54,6 +54,7 @@ import type {Errors} from '@src/types/onyx/OnyxCommon';
 import type {CurrentUserPersonalDetails, PersonalDetailsList} from '@src/types/onyx/PersonalDetails';
 import type {Participant} from '@src/types/onyx/Report';
 import type ReportAction from '@src/types/onyx/ReportAction';
+import type {SearchResultDataType} from '@src/types/onyx/SearchResults';
 import type Transaction from '@src/types/onyx/Transaction';
 import type {TransactionCustomUnit, WaypointCollection} from '@src/types/onyx/Transaction';
 import {isEmptyObject} from '@src/types/utils/EmptyObject';
@@ -11968,5 +11969,129 @@ describe('resolveOptimisticSplitChatReportID', () => {
 
         const splitChatReport = await getOnyxValue(`${ONYXKEYS.COLLECTION.REPORT}${optimisticSplitChatReportID}`);
         expect(splitChatReport?.reportID).toBe(optimisticSplitChatReportID);
+    });
+});
+
+describe('canEditAllSplits', () => {
+    const POLICY_ID = 'splitPolicy';
+    const MANAGED_REPORT_ID = 'managedReport';
+    const REJECTED_TO_REPORT_ID = 'rejectedToReport';
+    const ORIGINAL_TRANSACTION_ID = 'originalSplitSource';
+
+    function makeChild(transactionID: string, reportID: string): Transaction {
+        return {
+            ...createRandomTransaction(0),
+            transactionID,
+            reportID,
+            comment: {originalTransactionID: ORIGINAL_TRANSACTION_ID, source: CONST.IOU.TYPE.SPLIT},
+        };
+    }
+
+    function makeExpenseReport(reportID: string, managerID: number, isOpen: boolean): Report {
+        return {
+            ...createRandomReport(0, undefined),
+            reportID,
+            type: CONST.REPORT.TYPE.EXPENSE,
+            policyID: POLICY_ID,
+            ownerAccountID: CARLOS_ACCOUNT_ID,
+            managerID,
+            stateNum: isOpen ? CONST.REPORT.STATE_NUM.OPEN : CONST.REPORT.STATE_NUM.SUBMITTED,
+            statusNum: isOpen ? CONST.REPORT.STATUS_NUM.OPEN : CONST.REPORT.STATUS_NUM.SUBMITTED,
+        };
+    }
+
+    const children = [makeChild('managedSplit', MANAGED_REPORT_ID), makeChild('rejectedSplit', REJECTED_TO_REPORT_ID)];
+
+    async function setUp(role: Policy['role']) {
+        await Onyx.merge(`${ONYXKEYS.COLLECTION.POLICY}${POLICY_ID}`, {
+            ...createRandomPolicy(0),
+            id: POLICY_ID,
+            type: CONST.POLICY.TYPE.TEAM,
+            role,
+            approvalMode: CONST.POLICY.APPROVAL_MODE.BASIC,
+            approver: JULES_EMAIL,
+            owner: VIT_EMAIL,
+            employeeList: {[CARLOS_EMAIL]: {email: CARLOS_EMAIL, submitsTo: JULES_EMAIL}},
+        });
+        await Onyx.merge(ONYXKEYS.PERSONAL_DETAILS_LIST, {
+            [CARLOS_ACCOUNT_ID]: {accountID: CARLOS_ACCOUNT_ID, login: CARLOS_EMAIL},
+            [JULES_ACCOUNT_ID]: {accountID: JULES_ACCOUNT_ID, login: JULES_EMAIL},
+        });
+        await waitForBatchedUpdates();
+    }
+
+    it('returns false when a split was rejected to an open report the user does not manage', async () => {
+        // Given a vacation delegate (Rory) who manages the submitted report, while the rejected split sits on the submitter's open report that Jules approves
+        await setUp(CONST.POLICY.ROLE.USER);
+        const reports: OnyxCollection<Report> = {
+            [`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`]: makeExpenseReport(MANAGED_REPORT_ID, RORY_ACCOUNT_ID, false),
+            [`${ONYXKEYS.COLLECTION.REPORT}${REJECTED_TO_REPORT_ID}`]: makeExpenseReport(REJECTED_TO_REPORT_ID, JULES_ACCOUNT_ID, true),
+        };
+
+        // When we check whether every split can be edited
+        // Then it is false, because the backend refuses any write to the split group in that case
+        expect(canEditAllSplits(children, reports, undefined, undefined)).toBe(false);
+    });
+
+    it('returns true when the user also manages the open report of the rejected split', async () => {
+        // Given the regular approver, who manages both reports, which the backend accepts
+        await setUp(CONST.POLICY.ROLE.USER);
+        const reports: OnyxCollection<Report> = {
+            [`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`]: makeExpenseReport(MANAGED_REPORT_ID, RORY_ACCOUNT_ID, false),
+            [`${ONYXKEYS.COLLECTION.REPORT}${REJECTED_TO_REPORT_ID}`]: makeExpenseReport(REJECTED_TO_REPORT_ID, RORY_ACCOUNT_ID, true),
+        };
+
+        // When we check whether every split can be edited
+        // Then the save is allowed as today
+        expect(canEditAllSplits(children, reports, undefined, undefined)).toBe(true);
+    });
+
+    it('returns true for a workspace admin', async () => {
+        // Given the same reports as the delegate case, but Rory is an admin of the workspace
+        await setUp(CONST.POLICY.ROLE.ADMIN);
+        const reports: OnyxCollection<Report> = {
+            [`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`]: makeExpenseReport(MANAGED_REPORT_ID, RORY_ACCOUNT_ID, false),
+            [`${ONYXKEYS.COLLECTION.REPORT}${REJECTED_TO_REPORT_ID}`]: makeExpenseReport(REJECTED_TO_REPORT_ID, JULES_ACCOUNT_ID, true),
+        };
+
+        // When we check whether every split can be edited
+        // Then admins keep their right to edit every split
+        expect(canEditAllSplits(children, reports, undefined, undefined)).toBe(true);
+    });
+
+    it('reads a report that is only in the search snapshot', async () => {
+        // Given the rejected split's report is missing from Onyx but present in the Search snapshot, managed by Rory
+        await setUp(CONST.POLICY.ROLE.USER);
+        const reports: OnyxCollection<Report> = {
+            [`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`]: makeExpenseReport(MANAGED_REPORT_ID, RORY_ACCOUNT_ID, false),
+        };
+        const searchData: SearchResultDataType = {};
+        searchData[`${ONYXKEYS.COLLECTION.REPORT}${REJECTED_TO_REPORT_ID}`] = makeExpenseReport(REJECTED_TO_REPORT_ID, RORY_ACCOUNT_ID, true);
+
+        // When we check whether every split can be edited
+        // Then the snapshot report is used, so the save is allowed
+        expect(canEditAllSplits(children, reports, searchData, undefined)).toBe(true);
+    });
+
+    it('returns true for the splits of a tracked expense', async () => {
+        // Given both splits are still unreported in the self DM, so they have no report to look up
+        await setUp(CONST.POLICY.ROLE.USER);
+        const trackedChildren = [makeChild('trackedSplitA', CONST.REPORT.UNREPORTED_REPORT_ID), makeChild('trackedSplitB', CONST.REPORT.UNREPORTED_REPORT_ID)];
+
+        // When we check whether every split can be edited
+        // Then the owner can still edit them
+        expect(canEditAllSplits(trackedChildren, {}, undefined, undefined)).toBe(true);
+    });
+
+    it('returns false when the report of a split cannot be found', async () => {
+        // Given the rejected split's report is neither in Onyx nor in the Search snapshot
+        await setUp(CONST.POLICY.ROLE.USER);
+        const reports: OnyxCollection<Report> = {
+            [`${ONYXKEYS.COLLECTION.REPORT}${MANAGED_REPORT_ID}`]: makeExpenseReport(MANAGED_REPORT_ID, RORY_ACCOUNT_ID, false),
+        };
+
+        // When we check whether every split can be edited
+        // Then we fail closed rather than send a write the backend may refuse
+        expect(canEditAllSplits(children, reports, undefined, undefined)).toBe(false);
     });
 });

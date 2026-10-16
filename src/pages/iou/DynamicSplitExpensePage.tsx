@@ -43,6 +43,7 @@ import {
     resolveSplitItemReportID,
     updateSplitExpenseAmountField,
 } from '@libs/actions/IOU/SplitExpenseItems';
+import {canEditAllSplits} from '@libs/actions/IOU/SplitTransactionUpdate';
 import {convertToBackendAmount} from '@libs/CurrencyUtils';
 import DateUtils from '@libs/DateUtils';
 import {canUseTouchScreen} from '@libs/DeviceCapabilities';
@@ -391,6 +392,11 @@ function DynamicSplitExpensePage({route}: DynamicSplitExpensePageProps) {
         // When we try to save splits during editing splits and if the data is identical to the already created transactions we should close the split flow
         if (deepEqual(splitFieldDataFromChildTransactions, splitExpenses)) {
             Navigation.dismissToPreviousRHP();
+            return;
+        }
+
+        if (!canEditAllSplits(childTransactions, allReports, currentSearchResults?.data, rules)) {
+            setErrorMessage(translate('iou.splitExpenseCannotEditSplits'));
             return;
         }
 

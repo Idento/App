@@ -1391,6 +1391,7 @@ const translations: TranslationDeepObject<typeof en> = {
         totalAmountLessThanOriginal: (amount: string) => `Le montant total est inférieur de ${amount} à la dépense initiale.`,
         splitExpenseZeroAmount: 'Veuillez saisir un montant valide avant de continuer.',
         splitExpenseOneMoreSplit: 'Aucune répartition ajoutée. Ajoutez-en au moins une pour enregistrer.',
+        splitExpenseCannotEditSplits: 'Une de ces répartitions se trouve sur une note de frais que vous ne pouvez pas modifier, ces répartitions ne peuvent donc pas être changées.',
         splitExpenseEditTitle: (amount: string, merchant: string) => `Modifier ${amount} pour ${merchant}`,
         removeSplit: 'Supprimer la répartition',
         splitExpenseCannotBeEditedModalTitle: 'Cette dépense ne peut pas être modifiée',

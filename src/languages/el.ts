@@ -1431,6 +1431,7 @@ const translations: TranslationDeepObject<typeof en> = {
         totalAmountLessThanOriginal: (amount: string) => `Το συνολικό ποσό είναι κατά ${amount} λιγότερο από την αρχική δαπάνη.`,
         splitExpenseZeroAmount: 'Παρακαλώ εισαγάγετε ένα έγκυρο ποσό πριν συνεχίσετε.',
         splitExpenseOneMoreSplit: 'Δεν προστέθηκαν κατανομές. Προσθέστε τουλάχιστον μία για να αποθηκεύσετε.',
+        splitExpenseCannotEditSplits: 'Μία από αυτές τις κατανομές βρίσκεται σε αναφορά που δεν μπορείτε να επεξεργαστείτε, οπότε αυτές οι κατανομές δεν μπορούν να αλλάξουν.',
         splitExpenseEditTitle: (amount: string, merchant: string) => `Επεξεργαστείτε ${amount} για ${merchant}`,
         removeSplit: 'Αφαίρεση διαχωρισμού',
         splitExpenseCannotBeEditedModalTitle: 'Αυτό η δαπάνη δεν μπορεί να επεξεργαστεί',

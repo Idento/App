@@ -1369,6 +1369,7 @@ const translations: TranslationDeepObject<typeof en> = {
         totalAmountLessThanOriginal: (amount: string) => `合計金額は元の経費より${amount}少なくなっています。`,
         splitExpenseZeroAmount: '続行する前に有効な金額を入力してください。',
         splitExpenseOneMoreSplit: '分割が追加されていません。保存するには少なくとも 1 件追加してください。',
+        splitExpenseCannotEditSplits: 'これらの分割のいずれかが編集できないレポートにあるため、これらの分割は変更できません。',
         splitExpenseEditTitle: (amount: string, merchant: string) => `${merchant} の ${amount} を編集`,
         removeSplit: '分割を削除',
         splitExpenseCannotBeEditedModalTitle: 'この経費は編集できません',

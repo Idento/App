@@ -1384,6 +1384,7 @@ const translations: TranslationDeepObject<typeof en> = {
         totalAmountLessThanOriginal: (amount: string) => `Het totale bedrag is ${amount} minder dan de oorspronkelijke uitgave.`,
         splitExpenseZeroAmount: 'Voer een geldig bedrag in voordat je verdergaat.',
         splitExpenseOneMoreSplit: 'Geen splitsingen toegevoegd. Voeg er minimaal één toe om op te slaan.',
+        splitExpenseCannotEditSplits: 'Een van deze splitsingen staat op een rapport dat je niet kunt bewerken, dus deze splitsingen kunnen niet worden gewijzigd.',
         splitExpenseEditTitle: (amount: string, merchant: string) => `${amount} voor ${merchant} bewerken`,
         removeSplit: 'Splits verwijderen',
         splitExpenseCannotBeEditedModalTitle: 'Deze uitgave kan niet worden bewerkt',

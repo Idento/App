@@ -30,6 +30,7 @@ import {
 } from '@libs/ReportActionsUtils';
 import {
     buildOptimisticAddCommentReportAction,
+    canEditMoneyRequest,
     canUserPerformWriteAction as canUserPerformWriteActionReportUtils,
     getParsedComment,
     getPolicyExpenseChat,
@@ -184,6 +185,27 @@ function hasEditableSplitExpenseLeft(
         const reportKey = `${ONYXKEYS.COLLECTION.REPORT}${liveReportID}` as const;
         const statusNum = allReportsList?.[reportKey]?.statusNum ?? searchReportsData?.[reportKey]?.statusNum ?? CONST.REPORT.STATUS_NUM.OPEN;
         return statusNum < CONST.REPORT.STATUS_NUM.SUBMITTED;
+    });
+}
+
+/**
+ * Whether the current user can edit every split of the group. The backend refuses any write to the group otherwise,
+ * e.g. for a vacation delegate once a split has been rejected to the submitter's open report.
+ */
+function canEditAllSplits(
+    childTransactions: Array<OnyxEntry<OnyxTypes.Transaction>>,
+    allReportsList: OnyxCollection<OnyxTypes.Report>,
+    searchReportsData: SearchResultDataType | undefined,
+    rules: OnyxCollection<OnyxTypes.Rule>,
+): boolean {
+    return childTransactions.every((transaction) => {
+        // Splits of a tracked expense stay unreported in the owner's self DM
+        if (transaction?.reportID === CONST.REPORT.UNREPORTED_REPORT_ID) {
+            return true;
+        }
+        const reportKey = `${ONYXKEYS.COLLECTION.REPORT}${transaction?.reportID}` as const;
+        const report = allReportsList?.[reportKey] ?? searchReportsData?.[reportKey];
+        return !!report && canEditMoneyRequest(undefined, transaction, rules, false, report, undefined, undefined, true);
     });
 }
 
@@ -2175,5 +2197,5 @@ function updateSplitTransactions({
     TransitionTracker.runAfterTransitions({callback: () => removeDraftSplitTransaction(originalTransactionID), waitForUpcomingTransition: true});
 }
 
-export {hasEditableSplitExpenseLeft, updateSplitTransactions};
+export {canEditAllSplits, hasEditableSplitExpenseLeft, updateSplitTransactions};
 export type {UpdateSplitTransactionsParams};
